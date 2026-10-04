@@ -38,12 +38,15 @@ const divisionLabels: Record<string, string> = {
   ADMIN: "Admin",
 };
 
+import AdvancedAnalytics from "@/components/AdvancedAnalytics";
+
 export default function ReportsPage() {
   const [loading, setLoading] = useState(false);
   const [chartRange, setChartRange] = useState("month");
   const router = useRouter();
 
   // Real data state
+  const [applications, setApplications] = useState<any[]>([]);
   const [testResults, setTestResults] = useState<any[]>([]);
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [statsTotals, setStatsTotals] = useState<StatsData>({ applicants: 0, passed: 0, avgScore: 0 });
@@ -53,6 +56,22 @@ export default function ReportsPage() {
     avgScore: 0,
     completionRate: 0,
   });
+
+  const fetchApplications = async () => {
+    try {
+      const response = await fetch('/api/admin/applications');
+      const result = await response.json();
+      if (result.success) {
+        setApplications(result.applications.map((app: any) => ({
+          ...app,
+          jobTitle: app.job?.title || "Lowongan",
+          division: app.job?.division || "Umum",
+        })));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   // Fetch test results
   const fetchTestResults = async () => {
@@ -104,6 +123,7 @@ export default function ReportsPage() {
   useEffect(() => {
     fetchTestResults();
     fetchChartData(chartRange);
+    fetchApplications();
   }, []);
 
   useEffect(() => {
@@ -132,12 +152,12 @@ export default function ReportsPage() {
     rate: data.total > 0 ? Math.round((data.passed / data.total) * 100) : 0,
   }));
 
-  // Quick stats
+  // Quick stats integrated with real applications data
   const quickStats = [
-    { label: "Tes Aktif", value: testResults.filter((r: any) => r.testStatus === "IN_PROGRESS" || r.testStatus === "NOT_STARTED").length, icon: BookOpen, color: "#00205B" },
-    { label: "Menunggu Review", value: testResults.filter((r: any) => r.testStatus === "SUBMITTED" && r.totalScore === null).length, icon: Clock, color: "#FF5E00" },
-    { label: "Lulus Tes", value: testResults.filter((r: any) => r.passed === true).length, icon: UserCheck, color: "#10B981" },
-    { label: "Tidak Lulus", value: testResults.filter((r: any) => r.passed === false).length, icon: XCircle, color: "#EF4444" },
+    { label: "Tes Aktif", value: applications.filter(a => a.status === "TEST_SCHEDULED" || a.status === "IN_TEST").length, icon: BookOpen, color: "#00205B" },
+    { label: "Menunggu Review", value: applications.filter(a => a.status === "PENDING" || a.status === "ADMIN_CHECK").length, icon: Clock, color: "#FF5E00" },
+    { label: "Lulus Tes / Lanjut", value: applications.filter(a => ["TEST_COMPLETED", "INTERVIEW", "MCU", "OFFERING", "OFFERED", "ACCEPTED"].includes(a.status)).length, icon: UserCheck, color: "#10B981" },
+    { label: "Gugur / Ditolak", value: applications.filter(a => a.status === "REJECTED").length, icon: XCircle, color: "#EF4444" },
   ];
 
   // Calculate chart scaling
@@ -168,7 +188,7 @@ export default function ReportsPage() {
             <p style={{ fontSize: "15px", color: "#666666" }}>Data dan statistik rekrutmen KAI Services</p>
           </div>
           <button
-            onClick={() => { fetchTestResults(); fetchChartData(chartRange); }}
+            onClick={() => { fetchTestResults(); fetchChartData(chartRange); fetchApplications(); }}
             disabled={loading}
             style={{ padding: "10px 20px", background: "#2563eb", color: "#ffffff", border: "none", borderRadius: "10px", fontSize: "14px", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: "8px" }}
           >
@@ -202,7 +222,7 @@ export default function ReportsPage() {
                 <Users className="w-6 h-6" style={{ color: "#00205B" }} />
               </div>
               <div>
-                <p style={{ fontSize: "28px", fontWeight: 800, color: "#111111" }}>{stats.totalPelamar}</p>
+                <p style={{ fontSize: "28px", fontWeight: 800, color: "#111111" }}>{applications.length}</p>
                 <p style={{ fontSize: "13px", color: "#888888" }}>Total Pelamar</p>
               </div>
             </div>
@@ -214,8 +234,12 @@ export default function ReportsPage() {
                 <Award className="w-6 h-6" style={{ color: "#16a34a" }} />
               </div>
               <div>
-                <p style={{ fontSize: "28px", fontWeight: 800, color: "#16a34a" }}>{stats.passingRate}%</p>
-                <p style={{ fontSize: "13px", color: "#888888" }}>Passing Rate</p>
+                <p style={{ fontSize: "28px", fontWeight: 800, color: "#16a34a" }}>
+                  {applications.length > 0 
+                    ? Math.round((applications.filter(a => !["PENDING", "ADMIN_CHECK", "REJECTED"].includes(a.status)).length / applications.length) * 100) 
+                    : 0}%
+                </p>
+                <p style={{ fontSize: "13px", color: "#888888" }}>Lolos Berkas</p>
               </div>
             </div>
           </div>
@@ -227,7 +251,7 @@ export default function ReportsPage() {
               </div>
               <div>
                 <p style={{ fontSize: "28px", fontWeight: 800, color: "#111111" }}>{stats.avgScore}%</p>
-                <p style={{ fontSize: "13px", color: "#888888" }}>Rata-rata Nilai</p>
+                <p style={{ fontSize: "13px", color: "#888888" }}>Rata-rata Tes</p>
               </div>
             </div>
           </div>
@@ -238,247 +262,18 @@ export default function ReportsPage() {
                 <BarChart3 className="w-6 h-6" style={{ color: "#8B5CF6" }} />
               </div>
               <div>
-                <p style={{ fontSize: "28px", fontWeight: 800, color: "#111111" }}>{stats.completionRate}%</p>
+                <p style={{ fontSize: "28px", fontWeight: 800, color: "#111111" }}>
+                  {applications.length > 0 
+                    ? Math.round((applications.filter(a => a.status !== "PENDING").length / applications.length) * 100) 
+                    : 0}%
+                </p>
                 <p style={{ fontSize: "13px", color: "#888888" }}>Completion Rate</p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Chart Section */}
-        <div style={{ background: "#ffffff", borderRadius: "16px", padding: "28px", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", marginBottom: "24px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
-            <div>
-              <h3 style={{ fontSize: "18px", fontWeight: 700, color: "#111111", margin: 0 }}>Grafik Pelamar</h3>
-              <p style={{ fontSize: "13px", color: "#888888", margin: "4px 0 0" }}>Tren pelamar berdasarkan periode waktu</p>
-            </div>
-            <div style={{ display: "flex", gap: "8px" }}>
-              {[
-                { key: "day", label: "Harian" },
-                { key: "week", label: "Mingguan" },
-                { key: "month", label: "Bulanan" },
-                { key: "year", label: "Tahunan" },
-              ].map((btn) => (
-                <button
-                  key={btn.key}
-                  onClick={() => setChartRange(btn.key)}
-                  style={{
-                    padding: "8px 16px",
-                    background: chartRange === btn.key ? "#00205B" : "#f1f5f9",
-                    color: chartRange === btn.key ? "#ffffff" : "#666666",
-                    border: "none",
-                    borderRadius: "8px",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  {btn.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Chart with Bars + Line */}
-          {chartData.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "60px", color: "#888" }}>
-              <BarChart3 className="w-12 h-12" style={{ margin: "0 auto 12px", opacity: 0.3 }} />
-              <p>Belum ada data untuk periode ini</p>
-            </div>
-          ) : (
-            <div style={{ position: "relative", height: "280px", paddingLeft: "50px", paddingBottom: "40px" }}>
-              {/* Y-axis labels */}
-              <div style={{ position: "absolute", left: 0, top: 0, bottom: "40px", display: "flex", flexDirection: "column", justifyContent: "space-between", fontSize: "11px", color: "#888888", width: "40px" }}>
-                <span>{maxValue}</span>
-                <span>{Math.round(maxValue * 0.75)}</span>
-                <span>{Math.round(maxValue * 0.5)}</span>
-                <span>{Math.round(maxValue * 0.25)}</span>
-                <span>0</span>
-              </div>
-
-              {/* Grid lines */}
-              <div style={{ position: "absolute", left: "50px", right: 0, top: 0, bottom: "40px", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-                {[0, 1, 2, 3, 4].map((i) => (
-                  <div key={i} style={{ borderBottom: "1px dashed #e5e5e5", width: "100%" }} />
-                ))}
-              </div>
-
-              {/* Average line */}
-              <div style={{
-                position: "absolute",
-                left: "50px",
-                right: 0,
-                top: `${100 - (avgLine / maxValue) * 100}%`,
-                borderTop: "2px dashed #FF5E00",
-              }}>
-                <span style={{
-                  position: "absolute",
-                  right: 0,
-                  top: "-20px",
-                  fontSize: "10px",
-                  color: "#FF5E00",
-                  fontWeight: 600,
-                  background: "#fff",
-                  padding: "2px 4px",
-                }}>
-                  Avg: {avgLine}
-                </span>
-              </div>
-
-              {/* Bars and Line */}
-              <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-around", height: "100%", paddingLeft: "50px" }}>
-                {chartData.map((data, i) => {
-                  const barHeight = (data.applicants / maxValue) * 100;
-                  const passedHeight = (data.passed / maxValue) * 100;
-                  return (
-                    <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1, height: "100%", position: "relative" }}>
-                      {/* Bars */}
-                      <div style={{ display: "flex", gap: "4px", alignItems: "flex-end", height: "100%", justifyContent: "center" }}>
-                        {/* Total bar */}
-                        <div style={{
-                          width: "20px",
-                          height: `${barHeight}%`,
-                          background: "linear-gradient(180deg, #00205B 0%, #003380 100%)",
-                          borderRadius: "4px 4px 0 0",
-                          position: "relative",
-                          transition: "height 0.3s ease",
-                        }}>
-                          <div style={{
-                            position: "absolute",
-                            top: "-20px",
-                            left: "50%",
-                            transform: "translateX(-50%)",
-                            fontSize: "11px",
-                            fontWeight: 700,
-                            color: "#00205B",
-                          }}>
-                            {data.applicants}
-                          </div>
-                        </div>
-                        {/* Passed bar */}
-                        <div style={{
-                          width: "20px",
-                          height: `${passedHeight}%`,
-                          background: "linear-gradient(180deg, #10B981 0%, #059669 100%)",
-                          borderRadius: "4px 4px 0 0",
-                          position: "relative",
-                          transition: "height 0.3s ease",
-                        }}>
-                          <div style={{
-                            position: "absolute",
-                            top: "-20px",
-                            left: "50%",
-                            transform: "translateX(-50%)",
-                            fontSize: "11px",
-                            fontWeight: 700,
-                            color: "#10B981",
-                          }}>
-                            {data.passed}
-                          </div>
-                        </div>
-                      </div>
-                      {/* X-axis label */}
-                      <div style={{
-                        position: "absolute",
-                        bottom: "-30px",
-                        fontSize: "11px",
-                        color: "#888888",
-                        whiteSpace: "nowrap",
-                      }}>
-                        {data.label}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Line connecting top of bars */}
-              <svg style={{
-                position: "absolute",
-                left: "50px",
-                top: 0,
-                width: "calc(100% - 50px)",
-                height: "calc(100% - 40px)",
-                pointerEvents: "none",
-              }}>
-                <defs>
-                  <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="#FF5E00" />
-                    <stop offset="100%" stopColor="#FF8B00" />
-                  </linearGradient>
-                </defs>
-                {/* Area fill */}
-                <path
-                  d={`
-                    M ${chartData.map((d, i) => {
-                      const x = i * (100 / (chartData.length - 1)) + (50 / (chartData.length - 1));
-                      const y = 100 - (d.applicants / maxValue) * 100;
-                      return `${x}% ${y}%`;
-                    }).join(" L ")}
-                    L 100% 100% L 0% 100% Z
-                  `}
-                  fill="url(#areaGradient)"
-                  fillOpacity={0.1}
-                />
-                <defs>
-                  <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" stopColor="#00205B" stopOpacity={0.3} />
-                    <stop offset="100%" stopColor="#00205B" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                {/* Line */}
-                <path
-                  d={`M ${chartData.map((d, i) => {
-                    const x = i * (100 / (chartData.length - 1)) + (50 / (chartData.length - 1));
-                    const y = 100 - (d.applicants / maxValue) * 100;
-                    return `${x}% ${y}%`;
-                  }).join(" L ")}`}
-                  fill="none"
-                  stroke="url(#lineGradient)"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                {/* Dots on line */}
-                {chartData.map((d, i) => {
-                  const x = i * (100 / (chartData.length - 1)) + (50 / (chartData.length - 1));
-                  const y = 100 - (d.applicants / maxValue) * 100;
-                  return (
-                    <circle
-                      key={i}
-                      cx={`${x}%`}
-                      cy={`${y}%`}
-                      r="4"
-                      fill="#FF5E00"
-                      stroke="#ffffff"
-                      strokeWidth="2"
-                    />
-                  );
-                })}
-              </svg>
-            </div>
-          )}
-
-          {/* Legend */}
-          <div style={{ display: "flex", justifyContent: "center", gap: "32px", marginTop: "40px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <div style={{ width: "16px", height: "16px", background: "linear-gradient(180deg, #00205B 0%, #003380 100%)", borderRadius: "3px" }} />
-              <span style={{ fontSize: "13px", color: "#666666" }}>Total Pelamar</span>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <div style={{ width: "16px", height: "16px", background: "linear-gradient(180deg, #10B981 0%, #059669 100%)", borderRadius: "3px" }} />
-              <span style={{ fontSize: "13px", color: "#666666" }}>Lulus Tes</span>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <div style={{ width: "24px", height: "3px", background: "linear-gradient(90deg, #FF5E00, #FF8B00)", borderRadius: "2px" }} />
-              <span style={{ fontSize: "13px", color: "#666666" }}>Tren Garis</span>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <div style={{ width: "20px", borderTop: "2px dashed #FF5E00" }} />
-              <span style={{ fontSize: "13px", color: "#666666" }}>Rata-rata ({avgLine})</span>
-            </div>
-          </div>
-        </div>
+        <AdvancedAnalytics applications={applications} />
 
         {/* Statistik per Divisi */}
         <div style={{ background: "#ffffff", borderRadius: "16px", padding: "28px", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", marginBottom: "24px" }}>
